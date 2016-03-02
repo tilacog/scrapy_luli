@@ -1,7 +1,14 @@
 # -*- coding: utf-8 -*-
 import scrapy
+import re
+
 from scrapy.loader import ItemLoader
 from luli.items import LuliItem 
+
+# RE for redirect JS script 
+REGEX = r'''location.replace\( +['"](.*?)['"]'''
+redirect_re = re.compile(REGEX)
+
 
 class FolhaSpider(scrapy.Spider):
     name = "folha"
@@ -21,9 +28,17 @@ class FolhaSpider(scrapy.Spider):
             url = response.urljoin(next_page[0].extract())
             yield scrapy.Request(url, self.parse)
 
-        
-
     def parse_content_page(self, response):
+
+        # Detect if this is a redirection page
+        m = redirect_re.search(response.body)
+        if m:
+            import requests
+            new_url = m.group(1)
+            new_content = requests.get(new_url).content
+            response = scrapy.http.HtmlResponse(new_url, body=new_content)
+
+        # Start scraping
         il = ItemLoader(item = LuliItem(), response=response)
         
         il.add_css('content', 'div#articleNew > p::text')
@@ -37,8 +52,5 @@ class FolhaSpider(scrapy.Spider):
         
         il.add_value('url', response.url)
 
-
         item = il.load_item() 
         yield item
-
-
